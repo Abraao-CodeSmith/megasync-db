@@ -261,7 +261,7 @@ Backend Developer • Node.js • Automação • Infraestrutura
 
 # ⭐ Considerações finais
 
-O **BackupSoft** foi criado para oferecer uma solução simples, leve e automatizada para backup de bancos SQL Server utilizando armazenamento em nuvem.
+O **megasync-db** foi criado para oferecer uma solução simples, leve e automatizada para backup de bancos SQL Server utilizando armazenamento em nuvem.
 
 Com poucos passos é possível manter backups recorrentes funcionando de forma totalmente automática.
 
