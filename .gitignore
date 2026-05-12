@@ -1,0 +1,29 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente
+.env
+
+# Backups locais
+backups/
+*.bak
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# IDEs/Editores
+.vscode/
+.idea/
+
+# Coverage/Testes
+coverage/
+
+# Arquivos temporários
+tmp/
+temp/
