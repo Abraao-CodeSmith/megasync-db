@@ -89,7 +89,7 @@ git clone https://github.com/Abraao-CodeSmith/megasync-db.git
 ## 2️⃣ Acesse a pasta
 
 ```bash
-cd backupsoft
+cd megasync-db
 ```
 
 ---
