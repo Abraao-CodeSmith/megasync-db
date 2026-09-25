@@ -15,10 +15,11 @@ O **megasync-db** é uma solução desenvolvida em Node.js para automatizar back
 
 O sistema:
 
-- 📦 Gera backups `.bak` automaticamente;
+- 📦 Gera backups `.bak` automaticamente via `sqlcmd` com autenticação Windows integrada (`-E`);
 - ☁️ Envia os arquivos diretamente para o Mega.nz;
-- 🧹 Remove backups antigos da nuvem antes de enviar o novo;
-- ⏰ Executa tarefas agendadas automaticamente utilizando cron;
+- 🧹 Aplica política de retenção: mantém **no máximo 3 backups** no Mega.nz, removendo os mais antigos antes do upload;
+- ⏰ Executa um backup **imediatamente ao iniciar** e agenda os próximos via cron;
+- 🗑️ Remove o arquivo temporário local após o upload (ou em caso de falha), garantindo limpeza;
 - 🔒 Mantém os dados organizados e seguros.
 
 Ideal para servidores locais, pequenas empresas, automações internas e ambientes que precisam de backups simples e eficientes.
@@ -27,14 +28,14 @@ Ideal para servidores locais, pequenas empresas, automações internas e ambient
 
 # ⚙️ Tecnologias utilizadas
 
-| Tecnologia | Função |
-|---|---|
-| Node.js | Ambiente backend |
-| MegaJS | Integração com Mega.nz |
-| node-cron | Agendamento automático |
-| dotenv | Gerenciamento de variáveis de ambiente |
-| SQLCMD | Execução do backup SQL Server |
-| Jest | Testes automatizados |
+| Tecnologia | Versão | Função |
+|---|---|---|
+| Node.js | — | Ambiente backend |
+| MegaJS | ^1.3.10 | Integração com Mega.nz |
+| node-cron | ^4.2.1 | Agendamento automático |
+| dotenv | ^17.4.2 | Gerenciamento de variáveis de ambiente |
+| SQLCMD | — | Execução do backup SQL Server |
+| Jest | ^30.4.2 | Testes automatizados |
 
 ---
 
@@ -43,11 +44,11 @@ Ideal para servidores locais, pequenas empresas, automações internas e ambient
 ```bash
 megasync-db/
 │
-├── backup.js            # Script principal de backup
-├── backup-manual.js     # Execução manual do backup
-├── backup.test.js       # Testes automatizados
-├── test-mega.js         # Teste de conexão com Mega.nz
-├── .env.example         # Exemplo de variáveis de ambiente
+├── backup.js            # Script principal: backup automático agendado
+├── backup-manual.js     # Script utilitário: sobe um .bak existente para pasta específica no Mega.nz
+├── backup.test.js       # Testes automatizados com Jest
+├── test-mega.js         # Utilitário para testar conexão com o Mega.nz
+├── .env.example         # Modelo de variáveis de ambiente
 ├── package.json
 └── package-lock.json
 ```
@@ -56,22 +57,40 @@ megasync-db/
 
 # 🔧 Como funciona
 
-O fluxo do sistema é simples:
+## Fluxo do backup automático (`backup.js`)
 
 ```text
-SQL Server
+Início do processo (imediato ou via cron)
    ↓
-Geração do arquivo .bak
+Cria diretório local de backup (se não existir)
    ↓
-Armazenamento temporário local
+Executa sqlcmd → gera arquivo backup_<DB>_<timestamp>.bak localmente
    ↓
-Conexão com Mega.nz
+Conecta ao Mega.nz
    ↓
-Remoção de backups antigos
+Política de retenção: lista backups existentes no Mega.nz
    ↓
-Upload do novo backup
+Ordena por timestamp (mais recentes primeiro)
    ↓
-Limpeza do arquivo local
+Remove backups excedentes (mantém os 2 mais recentes para que, após o upload, o total seja 3)
+   ↓
+Upload do novo arquivo .bak para a raiz do Mega.nz
+   ↓
+Remove o arquivo temporário local (sempre, em bloco finally)
+```
+
+## Fluxo do backup manual (`backup-manual.js`)
+
+```text
+Conecta ao Mega.nz
+   ↓
+Verifica se a pasta "BACKUP_MANUAL_SEGURANCA" existe na raiz do Mega.nz
+   ↓
+Cria a pasta caso não exista
+   ↓
+Lê o arquivo local fixo: C:\backup_manual_seguranca.bak
+   ↓
+Faz upload com nome manual_backup_<timestamp>.bak dentro da pasta
 ```
 
 ---
@@ -84,15 +103,11 @@ Limpeza do arquivo local
 git clone https://github.com/Abraao-CodeSmith/megasync-db.git
 ```
 
----
-
 ## 2️⃣ Acesse a pasta
 
 ```bash
 cd megasync-db
 ```
-
----
 
 ## 3️⃣ Instale as dependências
 
@@ -107,41 +122,57 @@ npm install
 Crie um arquivo `.env` baseado no `.env.example`:
 
 ```env
+# Credenciais do Mega.nz
 MEGA_EMAIL=seuemail@mega.nz
 MEGA_PASSWORD=suasenha
 
+# Banco de dados SQL Server
 DB_INSTANCE=localhost
 DB_NAME=SeuBanco
 
+# Diretório temporário local para o .bak antes do upload
 LOCAL_BACKUP_DIR=./backups
 ```
+
+> **Atenção:** o `sqlcmd` utiliza autenticação Windows integrada (`-E`). Certifique-se de que o usuário que executa o script tem permissão no SQL Server.
 
 ---
 
 # ▶️ Executando o projeto
 
-## Execução automática
+## Execução automática (backup.js)
 
-O sistema utiliza cron para executar backups automaticamente.
+```bash
+node backup.js
+```
 
-Atualmente configurado para:
+Ao iniciar, o script:
+
+1. **Executa um backup imediatamente**;
+2. **Agenda os próximos** automaticamente via cron.
+
+### Agendamento atual
 
 ```cron
 0 15 * * 1,5
 ```
 
-Isso significa:
-
-- 📅 Segunda-feira e sexta-feira
-- 🕒 Às 15:00
+- 📅 **Segunda-feira e sexta-feira**
+- 🕒 **Às 15:00h**
 
 ---
 
-## Execução manual
+## Execução manual (backup-manual.js)
+
+Usado para subir manualmente um arquivo `.bak` já existente para uma pasta dedicada no Mega.nz.
+
+**Pré-requisito:** o arquivo `C:\backup_manual_seguranca.bak` deve existir na máquina.
 
 ```bash
 node backup-manual.js
 ```
+
+O arquivo será enviado para a pasta `BACKUP_MANUAL_SEGURANCA` no Mega.nz com o nome `manual_backup_<timestamp>.bak`.
 
 ---
 
@@ -149,16 +180,34 @@ node backup-manual.js
 
 O projeto utiliza a biblioteca **MegaJS** para:
 
-- autenticar na conta Mega;
-- listar arquivos existentes;
-- remover backups antigos;
-- enviar o novo arquivo automaticamente.
+- Autenticar na conta Mega.nz via e-mail e senha;
+- Listar arquivos existentes na raiz da conta;
+- Aplicar política de retenção (máximo 3 backups automáticos);
+- Enviar o novo arquivo de backup;
+- Criar pastas e fazer uploads para destinos específicos (modo manual).
+
+---
+
+# 🛡️ Política de retenção de backups
+
+O sistema mantém **no máximo 3 backups automáticos** no Mega.nz:
+
+- Os arquivos são identificados pelo prefixo `backup_<DB_NAME>` e ordenados pelo timestamp no nome;
+- Antes de cada upload, os backups excedentes (além dos 2 mais recentes) são deletados;
+- Após o upload do novo arquivo, o total na nuvem é sempre exatamente **3**.
+
+```js
+// Trecho de backup.js
+const MAX_BACKUPS = 3;
+const MAX_EXISTING_TO_KEEP = MAX_BACKUPS - 1; // mantém 2 antes de subir o novo
+const backupsExcedentes = sortedBackups.slice(MAX_EXISTING_TO_KEEP);
+```
 
 ---
 
 # 🧪 Testando conexão com Mega.nz
 
-Você pode validar sua conexão executando:
+Você pode validar suas credenciais executando:
 
 ```bash
 node test-mega.js
@@ -172,24 +221,27 @@ Saída esperada:
 
 ---
 
-# 🧠 Lógica principal do backup
+# 🧪 Testes automatizados
 
-O script principal:
+```bash
+npm test
+```
 
-1. Cria o diretório local de backup caso não exista;
-2. Executa o comando `sqlcmd` para gerar o `.bak`;
-3. Conecta ao Mega.nz;
-4. Remove backups antigos;
-5. Envia o novo arquivo;
-6. Remove o backup local após upload.
+Executa os testes com **Jest**. Os testes cobrem a lógica principal em `backup.test.js`.
+
+> O script `backup.js` detecta automaticamente o ambiente de testes (`NODE_ENV=test`) e não executa o backup nem inicia o cron quando rodado via Jest.
 
 ---
 
 # 🔄 Agendamento com Cron
 
-Trecho utilizado:
+Trecho utilizado em `backup.js`:
 
 ```js
+// Executa imediatamente ao iniciar
+performBackup();
+
+// Agenda execuções futuras: segunda e sexta às 15:00h
 cron.schedule('0 15 * * 1,5', () => {
   performBackup();
 });
@@ -197,43 +249,22 @@ cron.schedule('0 15 * * 1,5', () => {
 
 ---
 
-# 🛡️ Possíveis melhorias futuras
-
-- ✅ Compressão automática do backup;
-- ✅ Histórico de múltiplos backups;
-- ✅ Logs detalhados;
-- ✅ Dashboard web;
-- ✅ Integração com Google Drive e Dropbox;
-- ✅ Notificações por e-mail ou WhatsApp;
-- ✅ Dockerização;
-- ✅ Criptografia dos arquivos.
-
----
-
 # 📌 Requisitos
 
 - Node.js instalado;
-- SQL Server com `sqlcmd` configurado;
-- Conta Mega.nz;
-- Permissão de leitura/escrita no servidor.
+- SQL Server com `sqlcmd` disponível no PATH do sistema;
+- Conta Mega.nz válida;
+- Permissão de leitura/escrita no diretório de backup local;
+- Permissão de acesso ao banco de dados via autenticação Windows integrada.
 
 ---
 
 # 🚨 Observações importantes
 
-- O `sqlcmd` precisa estar disponível no PATH do sistema;
-- O upload remove backups antigos automaticamente;
-- O projeto utiliza autenticação integrada do SQL Server (`-E`).
-
----
-
-# 📜 Scripts disponíveis
-
-```bash
-npm test
-```
-
-Executa os testes automatizados utilizando Jest.
+- O `sqlcmd` usa autenticação integrada do Windows (`-E`), sem usuário/senha separados;
+- O arquivo temporário local é **sempre removido** após o processo, inclusive em caso de erro (bloco `finally`);
+- O `backup-manual.js` lê um caminho de arquivo **fixo** (`C:\backup_manual_seguranca.bak`) — ajuste conforme necessário;
+- Backups manuais são salvos em uma **pasta separada** (`BACKUP_MANUAL_SEGURANCA`) no Mega.nz, sem política de retenção automática.
 
 ---
 
@@ -263,5 +294,4 @@ Backend Developer • Node.js • Automação • Infraestrutura
 
 O **megasync-db** foi criado para oferecer uma solução simples, leve e automatizada para backup de bancos SQL Server utilizando armazenamento em nuvem.
 
-Com poucos passos é possível manter backups recorrentes funcionando de forma totalmente automática.
-
+Com poucos passos é possível manter backups recorrentes funcionando de forma totalmente automática, com retenção controlada e limpeza garantida dos arquivos temporários.
